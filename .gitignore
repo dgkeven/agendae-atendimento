@@ -43,3 +43,7 @@ temp/
 # Testes
 coverage/
 
+# Estado local e cache do WhatsApp
+data/
+sessions.json
+.wwebjs_cache/

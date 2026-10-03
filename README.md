@@ -1,134 +1,79 @@
-# 🤖 Bot WhatsApp - Jonathan Berleze Advocacia
+# Agendaê · Central de atendimento
 
-Este projeto é um **bot de atendimento jurídico via WhatsApp**, desenvolvido em **Node.js** com a biblioteca [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js).
-Ele automatiza atendimentos, organiza agendamentos e permite transferência entre atendentes de forma prática.
+Bot de WhatsApp para atender clientes da **plataforma Agendaê**: apresentação, interesse comercial, suporte e encaminhamento para a equipe. Inclui um painel local com status da conexão, QR Code e contagem de conversas.
 
----
+## Começar
 
-## ✨ Funcionalidades
+Requer Node.js 22.16+ e uma conta de WhatsApp para conectar. O Puppeteer instala um navegador durante a instalação das dependências.
 
-- 📲 **QR Code** para autenticação via WhatsApp Web.
-- ⏰ **Atendimento automático** fora do horário comercial com mensagem padrão.
-- 🔄 **Fluxo de atendimento** com múltiplas etapas:
-
-  - Consulta de andamento de processo.
-  - Informações sobre valor de consulta.
-  - Agendamento de atendimento.
-  - Conversa com atendente humano.
-
-- 👥 **Transferência de atendimento** entre dois atendentes (`Jonathan` e `Ingrid`).
-- 📴 **Modo manual de atendimento**, desativando as respostas automáticas.
-
----
-
-## 📋 Pré-requisitos
-
-- [Node.js](https://nodejs.org/) **v16+**
-- [npm](https://www.npmjs.com/)
-- WhatsApp instalado em um celular para autenticação via QR Code
-
----
-
-## ⚙️ Instalação
-
-1. Clone o repositório:
-
-```bash
-git clone https://github.com/dgkeven/chat-advogado.git
-cd chat-advogado
+```sh
+npm ci
+cp .env.example .env
+npm start
 ```
 
-2. Instale as dependências:
+Abra http://127.0.0.1:5002 e escaneie o QR Code em **WhatsApp → Dispositivos conectados**. A sessão fica salva em `.wwebjs_auth/`. `npm run dev` reinicia o processo quando arquivos são alterados.
 
-```bash
-npm install
+Confirme `AGENDAE_SITE_URL` antes de usar em produção. O endereço informado (`https://agendaê.app`) foi mantido como padrão, mas não foi possível verificar o site durante a implementação. Textos comerciais não presumem preços, planos ou funcionalidades não confirmados.
+
+## Atendimento
+
+- **1 — Conhecer a Agendaê:** direciona para o site e atendimento comercial.
+- **2 — Planos e contratação:** solicita nome, tipo de negócio e necessidade.
+- **3 — Suporte técnico:** solicita descrição do problema, sem senhas ou dados de clientes.
+- **4 — Falar com a equipe:** solicita nome e assunto.
+- **5 — Site:** fornece o link configurado.
+
+Após receber a descrição nas opções 2, 3 ou 4, o bot salva o resumo e coloca a conversa em modo humano. A equipe continua pelo próprio WhatsApp conectado. O encaminhamento é uma mudança local de estado: não abre tickets nem notifica outro número ou serviço.
+
+O cliente pode enviar `menu`, `encerrar` ou `cancelar` durante o atendimento automático. No modo humano, mensagens do cliente não reativam o bot.
+
+### Comandos da equipe
+
+Envie os comandos **pela conta conectada**, diretamente na conversa:
+
+- `/manual`: pausa a automação para esse contato, inclusive antes de responder pessoalmente.
+- `/automatico` ou `/encerrar`: limpa o estado; a próxima mensagem do cliente inicia o fluxo automático.
+
+Mensagens comuns da equipe não alteram o estado. Os comandos aparecem na conversa do WhatsApp. Grupos, status, transmissões e mensagens não textuais são ignorados; peça que o cliente descreva o problema em texto.
+
+## Estrutura
+
+```text
+src/
+  config/           Leitura e validação das variáveis de ambiente
+  conversations/    Fluxo, fila por contato e persistência
+  whatsapp/         Cliente e eventos do WhatsApp
+  http/             API e painel administrativo
+  index.js          Inicialização e encerramento
+public/             Interface do painel, sem etapa de build
+test/               Testes automatizados
+chatbot.js          Entrada compatível com o comando antigo
 ```
 
----
+## Configuração e operação
 
-## 🔧 Configuração
+Veja `.env.example`. O painel usa `127.0.0.1:5002` por padrão. Para expor na rede, configure `HOST` e um `ADMIN_TOKEN` forte. O navegador pedirá autenticação Basic: use qualquer usuário e o token como senha. Utilize HTTPS no proxy reverso. `/health` é público e retorna 200 quando conectado ou 503 nos demais estados; o painel e as demais rotas exigem autenticação quando o token estiver definido.
 
-- O bot utiliza **LocalAuth**, que salva a sessão do WhatsApp automaticamente.
-- Para limpar a sessão, basta excluir a pasta:
+`CHROME_EXECUTABLE_PATH` permite usar um Chrome já instalado. O sandbox do navegador fica habilitado; `CHROME_NO_SANDBOX=true` é uma opção explícita para ambientes que a exijam.
 
-```bash
-rm -rf ./.wwebjs_auth
+O estado é gravado em `data/conversations.json`, com escrita em arquivo temporário e substituição atômica. Um arquivo inválido interrompe a inicialização para evitar perda silenciosa. Os resumos de suporte persistem até a conversa ser encerrada pela equipe. Proteja os diretórios `data/` e `.wwebjs_auth/` e seus backups; não os versione. O bot deve rodar em **uma única instância por sessão/diretório**. Deduplicação dura cinco minutos em memória; não garante entrega exatamente uma vez após falhas ou reinícios.
+
+Em desconexão ou falha de autenticação, confira os logs e reinicie o processo; o painel exibe o estado. `SIGINT` e `SIGTERM` aguardam o processamento em andamento e encerram o navegador. Não há reconexão automática nesta versão.
+
+### Migração do bot jurídico
+
+Pare a versão anterior antes de iniciar esta. `chatbot.js` continua funcionando como entrada, e o diretório padrão de autenticação foi preservado. O antigo `sessions.json` não é importado: seus estados jurídicos são incompatíveis com os novos fluxos. Preserve um backup se necessário. Os comandos antigos sem `/` foram substituídos pelos comandos explícitos acima.
+
+## Verificação
+
+```sh
+npm test
+npm run check
 ```
 
----
+Os testes cobrem encaminhamento humano, comandos, concorrência, deduplicação, recuperação de falhas e persistência. A conexão real exige leitura do QR Code e validação manual com a conta de WhatsApp.
 
-## 🚀 Execução
+Não há integração com uma API da Agendaê: o bot atende clientes da plataforma e encaminha solicitações à equipe. Ele não consulta contas nem cria agendamentos.
 
-1. Inicie o bot:
-
-```bash
-node chatbot.js
-```
-
-2. Verifique o status no navegador:
-
-👉 [http://localhost:5002/](http://localhost:5002/)
-
-3. Acesse o QR Code para autenticar o WhatsApp:
-
-👉 [http://localhost:5002/qrcode](http://localhost:5002/qrcode)
-
----
-
-## 💬 Comandos no WhatsApp
-
-- `cancelar` → Encerra o atendimento atual.
-- `manual` → Ativa o modo manual (desativa respostas automáticas).
-- `encerrar` → Desativa o modo manual e reativa o bot.
-- `@ingrid` → Transfere o atendimento para Ingrid.
-- `@jonathan` → Transfere o atendimento de volta para Jonathan.
-
----
-
-## 🕒 Horário de Atendimento
-
-- **Segunda a Sexta:** 08:00 às 18:00
-- Fora do horário comercial, o bot responde com mensagem automática informando indisponibilidade.
-
----
-
-## 📂 Estrutura do Código
-
-- `chatbot.js` → Arquivo principal com toda a lógica do bot.
-- Variáveis globais:
-
-  - `conversas` → Controla a etapa e o atendente de cada usuário.
-  - `atendimentoManual` → Define se o usuário está em modo manual.
-  - `avisadosForaExpediente` → Registra quem já foi avisado fora do expediente.
-
----
-
-## 🛠️ Tecnologias
-
-- [Node.js](https://nodejs.org/)
-- [Express.js](https://expressjs.com/)
-- [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js)
-- [qrcode](https://www.npmjs.com/package/qrcode)
-
----
-
-## 📌 Observações
-
-- Requer **internet estável** no computador/servidor para manter a conexão com o WhatsApp.
-- A sessão permanece ativa, não sendo necessário escanear o QR Code toda vez.
-- Em caso de erro de autenticação, **apague a pasta `.wwebjs_auth`** e refaça a autenticação.
-
----
-
-## 👨‍💻 Autor
-
-- **Jonathan Berleze Advocacia**
-- Desenvolvedor: **Keven Mendes**
-
----
-
-## 📜 Licença
-
-Este projeto está licenciado sob a [MIT License](LICENSE).
-
----
+Licença MIT — consulte `LICENSE`.

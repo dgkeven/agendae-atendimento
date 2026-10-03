@@ -1,0 +1,23 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { createApp } = require('../src/http/app');
+test('painel protege QR e métricas; saúde reflete a conexão', async t => {
+  const status = { connection: 'awaiting_qr', qr: 'test-qr' };
+  const app = createApp({ config: { adminToken: 'test-secret', siteUrl: 'https://example.com' }, status, store: { summary: () => ({ total: 2, waitingForHuman: 1 }) } });
+  const server = await new Promise((resolve, reject) => { const s = app.listen(0, '127.0.0.1', error => error ? reject(error) : resolve(s)); s.once('error', reject); });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  assert.equal((await fetch(`${base}/api/qr`)).status, 401);
+  assert.equal((await fetch(`${base}/api/status`)).status, 401);
+  assert.equal((await fetch(`${base}/health`)).status, 503);
+  const headers = { Authorization: `Basic ${Buffer.from('admin:test-secret').toString('base64')}` };
+  const page = await fetch(base, { headers });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Agendaê/);
+  const metrics = await (await fetch(`${base}/api/status`, { headers })).json();
+  assert.equal(metrics.conversations.waitingForHuman, 1);
+  assert.match((await (await fetch(`${base}/api/qr`, { headers })).json()).image, /^data:image\/png;base64,/);
+  status.connection = 'ready'; status.qr = null;
+  assert.equal((await fetch(`${base}/health`)).status, 200);
+  assert.equal((await fetch(`${base}/api/qr`, { headers })).status, 404);
+});
